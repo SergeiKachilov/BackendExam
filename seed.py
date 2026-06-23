@@ -442,7 +442,7 @@ with db.Session(db.engine) as s:
         s.add(spec)
 
     # Добавляем роли
-    for role in [role_admin, role_user, role_manager]:
+    for role in [role_user, role_manager, role_admin]:
         s.add(role)
 
     # Добавляем категории

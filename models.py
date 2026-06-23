@@ -87,8 +87,8 @@ class Product(SQLModel, table=True):
     spec_links: list[ProductSpecs] = Relationship(
         back_populates="product", cascade_delete=True
     )
-    order_links: list[Cart] = Relationship(back_populates="product")
-    user_comment_links: list[Comments] = Relationship(back_populates="product")
+    order_links: list[Cart] = Relationship(back_populates="product", cascade_delete=True)
+    user_comment_links: list[Comments] = Relationship(back_populates="product", cascade_delete=True)
 
 
 class Image(SQLModel, table=True):
@@ -173,11 +173,11 @@ class ResponseUser(BaseModel):
     access_token: str | None = PydField(default=None)
 
 class UpdateUser(BaseModel):
-    login: str | None = PydField(default="")
+    login: str | None = PydField(default="", min_length=5)
     old_password: str | None = PydField(default="")
-    new_password: str | None = PydField(default="")
+    new_password: str | None = PydField(default="", min_length=5)
     email: str = PydField(default=None, example="email@mail.ru", pattern=r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
-    role: str | None = PydField(default=None)
+    role_id: int | None = PydField(default=None)
 
 # ТОВАРЫ
 
@@ -260,3 +260,19 @@ class EditComment(BaseModel):
 
 class DeleteComment(BaseModel):
     reason: str | None = PydField(default=None)
+
+# Характеристики
+
+class EditSpecs(BaseModel):
+    value: str = PydField(min_length=1)
+
+# Изображения
+
+class NewImage(BaseModel):
+    image_link: str = PydField(pattern=r'https?://[^\s<>"{}|\\^,;:]')
+    is_main: bool
+    product_id: int
+
+class EditImg(BaseModel):
+    image_link: str | None = PydField(default=None, pattern=r'https?://[^\s<>"{}|\\^,;:]')
+    is_main: bool | None = PydField(default=None)

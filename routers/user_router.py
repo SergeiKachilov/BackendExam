@@ -5,6 +5,7 @@ from db import SessionDep
 from models import *
 import bcrypt
 from auth import AuthHandler
+from log import logger
 
 router = APIRouter(prefix="/v1/user", tags=["User"])
 auth_handler = AuthHandler()
@@ -94,22 +95,24 @@ def UpdateUser(session: SessionDep, id: int, update_user: UpdateUser, token=Depe
     if str(id) != token['sub'] and user.role.name == "Администратор":
         raise HTTPException(403, "Отказано в доступе")
 
-    if update_user.role:
+    if update_user.role_id:
         if token['rol'] != "Администратор":
             raise HTTPException(403, "Недостаточно прав")
-        role = session.exec(select(Role).where(Role.name==update_user.role.capitalize())).first()
+        role = session.exec(select(Role).where(Role.id==update_user.role_id)).first()
         if not role:
             raise HTTPException(404, "Неверная роль")
         
+        admin = session.exec(select(User).where(User.id==token["sub"])).first()
+        logger.info(f"Admin-user ({admin.id, admin.login}) changed the role of user ({user.id, user.login}) from {user.role.name} to {role.name}")
         user.role = role
     
     if update_user.login != "" and not update_user.login.isspace():
         if session.exec(select(User).where(User.login==update_user.login.lower())).first():
-            raise HTTPException(400, "Пользователь с таким логином уже существует!")
+            raise HTTPException(409, "Пользователь с таким логином уже существует!")
         user.login = update_user.login.lower()
     
     if update_user.new_password != "" and not update_user.new_password.isspace():
-        if not auth_handler.verify_password(update_user.old_password, user.password) and token['rol'] != "Администратор":
+        if (not auth_handler.verify_password(update_user.old_password, user.password) or token['rol'] != "Администратор") and (user.role.name == "Администратор"):
             raise HTTPException(403, "Неверный пароль")
         
         user.password = auth_handler.get_password_hash(update_user.new_password)
@@ -136,6 +139,7 @@ def DeleteUser(session: SessionDep, id: int, token=Depends(auth_handler.auth_wra
     if str(id) != token['sub'] and user.role.name == "Администратор":
         raise HTTPException(403, "Отказано в доступе")
     
+    logger.info(f"User ({user.id, user.login} has been deleted)")
     session.delete(user)
     session.commit()
 

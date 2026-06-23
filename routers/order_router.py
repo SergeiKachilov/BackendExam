@@ -5,6 +5,7 @@ from db import SessionDep
 from models import *
 import bcrypt
 from auth import AuthHandler
+from log import logger
 
 router = APIRouter(prefix="/v1/order", tags=["Order"])
 auth_handler = AuthHandler()
@@ -73,6 +74,9 @@ def AddProductToCart(session: SessionDep, product_id: int, token=Depends(auth_ha
     if not product:
         raise HTTPException(404, "Товар не найден")
     
+    if product.quantity <= 0:
+        raise HTTPException(409, "Товар отсутствует")
+
     order = session.exec(select(Order).where(Order.user_id==token["sub"], Order.is_available==True)).first()
     if not order:
         order = Order(user_id=token["sub"], is_available=True)
@@ -80,7 +84,11 @@ def AddProductToCart(session: SessionDep, product_id: int, token=Depends(auth_ha
     
     cart_el = session.exec(select(Cart).where(Cart.product_id==product_id, Cart.order_id==order.id)).first()
     if cart_el:
+        if cart_el.count + 1 > product.quantity:
+            raise HTTPException(409, "Товара в корзине больше, чем доступно")
         cart_el.count += 1
+        product.quantity -= 1
+        session.add(product)
         session.add(cart_el)
     else:
         order.product_links.append(Cart(order_id=order.id, product_id=product_id, count=1))
@@ -104,6 +112,8 @@ def EditOrder(session: SessionDep, id: int, data: OrderData, token=Depends(auth_
     order = session.exec(select(Order).where(Order.id==id)).first()
     if not order:
         raise HTTPException(404, "Заказ не найден")
+    
+    user = session.exec(select(User).where(User.id==token["sub"])).first()
 
     if (not order.is_available or str(order.user_id) != token["sub"]) and token["rol"] == "Пользователь":
         raise HTTPException(403, "Недостаточно прав")
@@ -118,43 +128,53 @@ def EditOrder(session: SessionDep, id: int, data: OrderData, token=Depends(auth_
         order.address = data.address
         order.status = session.exec(select(Status).where(Status.name=="Создан")).first()
         order.date = datetime.now()
+        
+        logger.info(f"User {user.id, user.name} created the order with id {order.id}")
     
     if data.status_id is not None:
         status = session.exec(select(Status).where(Status.id==data.status_id)).first()
-        if not status:
-            raise HTTPException(404, "Статус не найден")
-        
         if token["rol"] == "Пользователь":
             raise HTTPException(403, "Недостаточно прав")
         
+        if not status:
+            raise HTTPException(404, "Статус не найден")
+        
+        old_status = order.status.name
         order.status = status
+        
+        logger.info(f"Order with id {order.id} has changed the status ({old_status}) to ({order.status.name}) by user ({user.id, user.login, token["rol"]})")
 
     if data.address != "" and not data.address.isspace():
+        logger.info(f"User ({user.id}, {user.login}, {token["rol"]}) changed the address ({data.address}) of order with id {order.id}")
         order.address = data.address
     
     if data.date is not None:
+        logger.info(f"User ({user.id}, {user.login}, {token["rol"]}) changed the date ({data.date}) of order with id {order.id}")
         order.date = data.date
     
     if data.new_products_id:
         products = session.exec(select(Product).where(Product.id.in_(data.new_products_id))).all()
-        if len(products) == 0:
-            raise HTTPException(404, "Товары не найдены")
-        
-        for product in products:
-            cart = session.exec(select(Cart).where(Cart.order_id==order.id, Cart.product_id==product.id)).first()
-            if not cart:
-                cart = Cart(order_id=order.id, product_id=product.id, count=1)
-                order.product_links.append(cart)
-            else:
-                cart.count += 1
+        if len(products) != 0:
+            for product in products:
+                if product.quantity > 0:
+                    cart = session.exec(select(Cart).where(Cart.order_id==order.id, Cart.product_id==product.id)).first()
+                    if not cart:
+                        cart = Cart(order_id=order.id, product_id=product.id, count=1)
+                        order.product_links.append(cart)
+                    else:
+                        cart.count += 1
+                
+                    product.quantity -= 1
     
     if data.delete_products_id:
         cart = session.exec(select(Cart).where(Cart.product_id.in_(data.delete_products_id), Cart.order_id==order.id)).all()
-        if not cart:
-            raise HTTPException(404, "Товары в корзине заказа не найдены")
+        if len(cart) != 0:
         
-        for el in cart:
-            session.delete(el)
+            for el in cart:
+                cart_product = session.exec(select(Product).where(Product.id==el.product_id)).first()
+                cart_product.quantity += el.count
+                session.add(cart_product)
+                session.delete(el)
     
     session.expire_on_commit = False
     session.add(order)
@@ -186,6 +206,10 @@ def ChangeAmount(session: SessionDep, id: int, data: AmountChange, token=Depends
     if data.amount == 0:
         session.delete(cart)
     else:
+        if data.amount > cart.product.quantity + cart.count:
+            raise HTTPException(409, "Товара в корзине больше, чем доступно")
+        
+        cart.product.quantity -= (data.amount - cart.count)
         cart.count = data.amount
         session.add(cart)
     
@@ -206,8 +230,12 @@ def DeleteOrder(session: SessionDep, id: int, token=Depends(auth_handler.auth_wr
     if token["rol"] != "Администратор":
         raise HTTPException(403, "Недостаточно прав")
     
+    user = session.exec(select(User).where(User.id==token["sub"])).first()
+    logger.warning(f"Admin-user ({user.id}, {user.login}) tried to delete the order with id {id}")
+    
     order = session.exec(select(Order).where(Order.id==id)).first()
     session.delete(order)
     session.commit()
-
+    
+    logger.info(f"Admin-user ({user.id}, {user.login}) successfully deleted the order")
     return {"msg": "success"}

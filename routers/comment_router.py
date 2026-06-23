@@ -5,6 +5,7 @@ from db import SessionDep
 from models import *
 import bcrypt
 from auth import AuthHandler
+from log import logger
 
 router = APIRouter(prefix="/v1/comments", tags=["Comments"])
 auth_handler = AuthHandler()
@@ -78,11 +79,16 @@ def DeleteComment(session: SessionDep, id: int, data: DeleteComment, token=Depen
     if not comment:
         raise HTTPException(404, "Отзыв не найден")
     
+    user = session.exec(select(User).where(User.id==token["sub"])).first()
+
     if comment.user_id != int(token["sub"]) and token["rol"] != "Администратор":
         raise HTTPException(403, "Недостаточно прав")
     
     if comment.user_id != int(token["sub"]) and (data.reason == None or data.reason == "" or data.reason.isspace()):
         raise HTTPException(422, "Для удаления комментария нужно указать причину")
+    
+    if comment.user_id != int(token["sub"]):
+        logger.info(f"Admin-user ({user.id}, {user.login}) deleted the comment (id: {comment.id}) of user ({comment.user_id, comment.user.login}) for a reason: {data.reason}")
     
     session.delete(comment)
     session.commit()
