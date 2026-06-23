@@ -128,35 +128,10 @@ class Spec(SQLModel, table=True):
         back_populates="spec"
     )
 
-class Table(SQLModel, table=True):
-    id: int | None = SqlField(default=None, primary_key=True)
-    name: str = SqlField(unique=True)
-
-    logs: list["Log"] = Relationship(back_populates="table", cascade_delete=True)
-
-class Type(SQLModel, table=True):
-    id: int | None = SqlField(default=None, primary_key=True)
-    name: str = SqlField(unique=True)
-
-    logs: list["Log"] = Relationship(back_populates="type", cascade_delete=True)
-
-class Log(SQLModel, table=True):
-    id: int | None = SqlField(default=None, primary_key=True)
-    user_id: int = SqlField(foreign_key="user.id")
-    table_id: int = SqlField(foreign_key="table.id")
-    type_id: int = SqlField(foreign_key="type.id")
-    object_id: int
-    old_data: str | None = SqlField(default=None)
-    new_data: str | None = SqlField(default=None)
-    date: datetime | None = SqlField(default=datetime.now())
-
-    table: Table = Relationship(back_populates="logs")
-    type: Type = Relationship(back_populates="logs")
-
 # ПОЛЬЗОВАТЕЛИ
 class RegUser(BaseModel):
     login: str = PydField(min_length=5)
-    password: str = PydField(min_length=5)
+    password: str = PydField(min_length=8)
     confirm_psw: str
     email: str = PydField(example="email@mail.ru", pattern=r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
 
@@ -175,7 +150,7 @@ class ResponseUser(BaseModel):
 class UpdateUser(BaseModel):
     login: str | None = PydField(default="", min_length=5)
     old_password: str | None = PydField(default="")
-    new_password: str | None = PydField(default="", min_length=5)
+    new_password: str | None = PydField(default="", min_length=8)
     email: str = PydField(default=None, example="email@mail.ru", pattern=r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)")
     role_id: int | None = PydField(default=None)
 

@@ -709,13 +709,6 @@ with db.Session(db.engine) as s:
     for comment in comments:
         s.add(comment)
 
-    s.flush()
-    s.add(models.Table(name="Product"))
-    s.add(models.Table(name="Order"))
-    s.add(models.Table(name="User"))
-    s.add(models.Table(name="Comment"))
-    s.add(models.Table(name="ProductSpecs"))
-
     # --- Коммит всех изменений ---
     s.commit()
 
