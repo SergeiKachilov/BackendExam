@@ -3,3 +3,5 @@ pydantic == 2.12.5
 sqlmodel == 0.0.38
 bcrypt == 5.0.0
 routers == 0.1.2
+PyJWT == 2.12.1
+passlib==1.7.4
